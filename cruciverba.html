@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cruciverba Facilitati</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.1.7"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.26.10/babel.min.js"></script>
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18.3.1",
+            "react/": "https://esm.sh/react@18.3.1/",
+            "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+            "lucide-react": "https://esm.sh/lucide-react@0.474.0?external=react,react-dom",
+            "canvas-confetti": "https://esm.sh/canvas-confetti@1.9.3?external=react,react-dom"
+        }
+    }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@400;600;700&display=swap');
+        
+        body {
+            font-family: 'Quicksand', sans-serif;
+            background-color: #f0fdf4;
+            touch-action: manipulation;
+        }
+
+        .cell-container {
+            position: relative;
+            aspect-ratio: 1/1;
+            width: 100%;
+        }
+
+        .cell-input {
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            font-weight: 800;
+            font-size: 1.5rem;
+            text-transform: uppercase;
+            border: 2px solid #bbf7d0;
+            border-radius: 8px;
+            background-color: white;
+            color: #166534;
+            transition: all 0.15s;
+            padding: 0;
+            caret-color: transparent;
+        }
+
+        .cell-input:focus {
+            outline: none;
+            border-color: #22c55e;
+            background-color: #f0fdf4;
+            box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.2);
+            z-index: 20;
+            transform: scale(1.05);
+        }
+
+        .cell-highlight-word {
+            background-color: #dcfce7 !important;
+            border-color: #86efac !important;
+        }
+
+        .cell-correct {
+            color: #15803d !important;
+            background-color: #f0fdf4 !important;
+        }
+
+        .cell-block {
+            background-color: #14532d;
+            border-radius: 8px;
+            width: 100%;
+            height: 100%;
+            opacity: 0.15;
+        }
+
+        .cell-number {
+            position: absolute;
+            top: 2px;
+            left: 4px;
+            font-size: 0.65rem;
+            color: #166534;
+            font-weight: 800;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        @media (max-width: 640px) {
+            .cell-input { font-size: 1.1rem; }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel" data-type="module" data-presets="react">
+        import React, { useState, useEffect, useMemo, useCallback } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { Trophy, ArrowRight, ArrowDown, RefreshCw, Star, MousePointer2 } from 'lucide-react';
+        import confetti from 'canvas-confetti';
+
+        const PUZZLES = [
+            {
+                grid: [
+                    ['G', 'A', 'T', 'T', 'O', null, 'C'],
+                    ['R', null, null, null, null, null, 'A'],
+                    ['A', null, 'M', 'E', 'L', 'A', 'N'],
+                    ['N', null, null, null, null, null, 'E'],
+                    ['D', 'I', 'E', 'C', 'I', null, null]
+                ],
+                clues: [
+                    { n: 1, r: 0, c: 0, dir: 'across', text: "Fa 'miao' ed è carino.", word: "GATTO" },
+                    { n: 1, r: 0, c: 0, dir: 'down', text: "Il contrario di 'piccolo'.", word: "GRANDE" },
+                    { n: 2, r: 0, c: 6, dir: 'down', text: "Fa 'bau' ed è fedele.", word: "CANE" },
+                    { n: 3, r: 2, c: 2, dir: 'across', text: "Un frutto rosso e dolce.", word: "MELA" },
+                    { n: 4, r: 4, c: 0, dir: 'across', text: "Il numero dopo il nove.", word: "DIECI" }
+                ]
+            },
+            {
+                grid: [
+                    ['P', 'I', 'Z', 'Z', 'A', null, null],
+                    ['A', null, 'E', null, null, null, null],
+                    ['N', 'O', 'B', 'I', 'C', 'I', null],
+                    ['E', null, 'R', null, null, null, null],
+                    [null, null, 'A', null, 'L', 'U', 'N', 'A']
+                ],
+                clues: [
+                    { n: 1, r: 0, c: 0, dir: 'across', text: "Cibo italiano rotondo.", word: "PIZZA" },
+                    { n: 1, r: 0, c: 0, dir: 'down', text: "Si mangia a fette con il prosciutto.", word: "PANE" },
+                    { n: 2, r: 1, c: 2, dir: 'down', text: "Strisce bianche e nere.", word: "ZEBRA" },
+                    { n: 3, r: 2, c: 1, text: "Ha pedali e due ruote.", word: "BICI" },
+                    { n: 4, r: 4, c: 4, dir: 'across', text: "Brilla di notte in cielo.", word: "LUNA" }
+                ]
+            }
+        ];
+
+        function App() {
+            const [puzzleIdx, setPuzzleIdx] = useState(0);
+            const [userGrid, setUserGrid] = useState([]);
+            const [activeCell, setActiveCell] = useState({ r: 0, c: 0 });
+            const [direction, setDirection] = useState('across');
+            const [gameOver, setGameOver] = useState(false);
+
+            const currentPuzzle = PUZZLES[puzzleIdx];
+
+            // Inicialización de la partida
+            useEffect(() => {
+                const initial = currentPuzzle.grid.map(row => 
+                    row.map(cell => cell === null ? null : '')
+                );
+                setUserGrid(initial);
+                setGameOver(false);
+                setActiveCell({ r: currentPuzzle.clues[0].r, c: currentPuzzle.clues[0].c });
+                setDirection(currentPuzzle.clues[0].dir);
+            }, [puzzleIdx]);
+
+            // Determinar celdas a iluminar (palabra activa)
+            const highlightedCells = useMemo(() => {
+                if (userGrid.length === 0) return [];
+                const clue = currentPuzzle.clues.find(c => 
+                    c.dir === direction && 
+                    activeCell.r >= c.r && activeCell.r < (c.dir === 'down' ? c.r + c.word.length : c.r + 1) &&
+                    activeCell.c >= c.c && activeCell.c < (c.dir === 'across' ? c.c + c.word.length : c.c + 1)
+                );
+                if (!clue) return [`${activeCell.r}-${activeCell.c}`];
+                
+                const cells = [];
+                for (let i = 0; i < clue.word.length; i++) {
+                    cells.push(clue.dir === 'across' ? `${clue.r}-${clue.c + i}` : `${clue.r + i}-${clue.c}`);
+                }
+                return cells;
+            }, [activeCell, direction, currentPuzzle, userGrid]);
+
+            const handleCellSelection = (r, c) => {
+                if (activeCell.r === r && activeCell.c === c) {
+                    const hasAcross = currentPuzzle.clues.some(clue => clue.dir === 'across' && r === clue.r && c >= clue.c && c < clue.c + clue.word.length);
+                    const hasDown = currentPuzzle.clues.some(clue => clue.dir === 'down' && c === clue.c && r >= clue.r && r < clue.r + clue.word.length);
+                    if (hasAcross && hasDown) setDirection(direction === 'across' ? 'down' : 'across');
+                } else {
+                    setActiveCell({ r, c });
+                    const hasAcross = currentPuzzle.clues.some(clue => clue.dir === 'across' && r === clue.r && c >= clue.c && c < clue.c + clue.word.length);
+                    const hasDown = currentPuzzle.clues.some(clue => clue.dir === 'down' && c === clue.c && r >= clue.r && r < clue.r + clue.word.length);
+                    if (direction === 'across' && !hasAcross && hasDown) setDirection('down');
+                    else if (direction === 'down' && !hasDown && hasAcross) setDirection('across');
+                }
+            };
+
+            const handleInput = (r, c, e) => {
+                const char = e.target.value.slice(-1).toUpperCase();
+                if (char && !/^[A-Z]$/.test(char)) return;
+
+                const newGrid = userGrid.map((row, ri) => 
+                    row.map((cell, ci) => (ri === r && ci === c ? char : cell))
+                );
+                setUserGrid(newGrid);
+
+                if (char !== '') moveFocus(r, c, 1);
+                
+                // Verificar victoria
+                const win = currentPuzzle.grid.every((row, ri) => 
+                    row.every((cell, ci) => cell === null || cell === newGrid[ri][ci])
+                );
+                if (win) {
+                    setGameOver(true);
+                    confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+                }
+            };
+
+            const handleKeyDown = (r, c, e) => {
+                if (e.key === 'Backspace' && userGrid[r][c] === '') {
+                    moveFocus(r, c, -1);
+                }
+            };
+
+            const moveFocus = (r, c, offset) => {
+                let nr = r, nc = c;
+                if (direction === 'across') nc += offset;
+                else nr += offset;
+
+                if (nr >= 0 && nr < currentPuzzle.grid.length && nc >= 0 && nc < currentPuzzle.grid[0].length && currentPuzzle.grid[nr][nc] !== null) {
+                    setActiveCell({ r: nr, c: nc });
+                    const nextInput = document.querySelector(`input[data-pos="${nr}-${nc}"]`);
+                    if (nextInput) nextInput.focus();
+                }
+            };
+
+            if (userGrid.length === 0) return <div className="p-10 text-center text-green-700">Caricamento...</div>;
+
+            return (
+                <div className="max-w-5xl mx-auto p-4 md:p-8 min-h-screen">
+                    <header className="text-center mb-8">
+                        <div className="flex items-center justify-center gap-3 mb-2">
+                            <Star className="text-green-500 fill-green-500" size={32} />
+                            <h1 className="text-4xl md:text-5xl font-black text-green-900 tracking-tight">Cruciverba Junior</h1>
+                            <Star className="text-green-500 fill-green-500" size={32} />
+                        </div>
+                        <p className="text-green-600 font-bold text-lg">Usa la tastiera per scrivere nelle caselle!</p>
+                    </header>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start" key={puzzleIdx}>
+                        {/* Griglia */}
+                        <div className="lg:col-span-7 bg-white p-5 rounded-3xl shadow-2xl border-4 border-green-100">
+                            <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${currentPuzzle.grid[0].length}, 1fr)` }}>
+                                {currentPuzzle.grid.map((row, rIdx) => 
+                                    row.map((cell, cIdx) => {
+                                        if (cell === null) return <div key={`${rIdx}-${cIdx}`} className="cell-block" />;
+                                        
+                                        const num = currentPuzzle.clues.find(clue => clue.r === rIdx && clue.c === cIdx)?.n;
+                                        const isSelected = activeCell.r === rIdx && activeCell.c === cIdx;
+                                        const isHighlighted = highlightedCells.includes(`${rIdx}-${cIdx}`);
+                                        const isCorrect = userGrid[rIdx][cIdx] === cell;
+
+                                        return (
+                                            <div key={`${rIdx}-${cIdx}`} className="cell-container">
+                                                {num && <span className="cell-number">{num}</span>}
+                                                <input
+                                                    type="text"
+                                                    data-pos={`${rIdx}-${cIdx}`}
+                                                    value={userGrid[rIdx][cIdx]}
+                                                    onFocus={() => handleCellSelection(rIdx, cIdx)}
+                                                    onChange={(e) => handleInput(rIdx, cIdx, e)}
+                                                    onKeyDown={(e) => handleKeyDown(rIdx, cIdx, e)}
+                                                    className={`cell-input ${isHighlighted ? 'cell-highlight-word' : ''} ${isSelected ? 'ring-4 ring-green-400' : ''} ${isCorrect && userGrid[rIdx][cIdx] !== '' ? 'cell-correct' : ''}`}
+                                                    autoComplete="off"
+                                                />
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Indizi */}
+                        <div className="lg:col-span-5 space-y-4">
+                            <div className={`p-5 rounded-2xl shadow-md border-l-8 transition-all ${direction === 'across' ? 'bg-green-100 border-green-500 scale-105' : 'bg-white border-gray-100'}`}>
+                                <h2 className="flex items-center gap-2 font-black text-green-800 mb-4 uppercase"><ArrowRight /> Orizzontali</h2>
+                                <div className="space-y-3">
+                                    {currentPuzzle.clues.filter(c => c.dir === 'across').map(clue => (
+                                        <div key={`ac-${clue.n}`} className="flex gap-3 text-lg leading-tight">
+                                            <span className="font-bold text-green-600">{clue.n}.</span>
+                                            <p className={`${highlightedCells.includes(`${clue.r}-${clue.c}`) && direction === 'across' ? 'font-bold text-green-900' : 'text-slate-600'}`}>{clue.text}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className={`p-5 rounded-2xl shadow-md border-l-8 transition-all ${direction === 'down' ? 'bg-green-100 border-green-500 scale-105' : 'bg-white border-gray-100'}`}>
+                                <h2 className="flex items-center gap-2 font-black text-green-800 mb-4 uppercase"><ArrowDown /> Verticali</h2>
+                                <div className="space-y-3">
+                                    {currentPuzzle.clues.filter(c => c.dir === 'down').map(clue => (
+                                        <div key={`dn-${clue.n}`} className="flex gap-3 text-lg leading-tight">
+                                            <span className="font-bold text-green-600">{clue.n}.</span>
+                                            <p className={`${highlightedCells.includes(`${clue.r}-${clue.c}`) && direction === 'down' ? 'font-bold text-green-900' : 'text-slate-600'}`}>{clue.text}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Vittoria Modal */}
+                    {gameOver && (
+                        <div className="fixed inset-0 bg-green-900/80 backdrop-blur-md flex items-center justify-center p-6 z-50">
+                            <div className="bg-white rounded-[50px] p-12 text-center shadow-2xl max-w-sm w-full border-t-[16px] border-yellow-400">
+                                <div className="w-24 h-24 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6"><Trophy size={60} className="text-yellow-500" /></div>
+                                <h2 className="text-4xl font-black text-green-950 mb-2">Bravissimo!</h2>
+                                <p className="text-green-700 mb-8 text-xl font-bold">Ottimo lavoro!</p>
+                                <button 
+                                    onClick={() => setPuzzleIdx((puzzleIdx + 1) % PUZZLES.length)}
+                                    className="w-full bg-green-600 hover:bg-green-700 text-white px-8 py-5 rounded-3xl font-black text-2xl shadow-lg transition-all flex items-center justify-center gap-3"
+                                >
+                                    <RefreshCw /> Prossimo Puzzle
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
