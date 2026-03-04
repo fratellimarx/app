@@ -1,0 +1,318 @@
+
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parole Intrecciate per Bambini</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.1.7"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.26.10/babel.min.js"></script>
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18.3.1",
+            "react/": "https://esm.sh/react@18.3.1/",
+            "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+            "lucide-react": "https://esm.sh/lucide-react@0.474.0?external=react",
+            "canvas-confetti": "https://esm.sh/canvas-confetti@1.9.3"
+        }
+    }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@400;600;700&display=swap');
+        
+        body {
+            font-family: 'Quicksand', sans-serif;
+            background-color: #f0f9ff;
+        }
+
+        .grid-cell {
+            aspect-ratio: 1/1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.2s;
+            border-radius: 4px;
+        }
+
+        .cell-default {
+            background-color: white;
+            border: 2px solid #e0f2fe;
+            color: #0369a1;
+        }
+
+        .cell-selected {
+            background-color: #38bdf8;
+            color: white;
+            transform: scale(0.95);
+        }
+
+        .cell-found {
+            background-color: #4ade80;
+            color: white;
+            border-color: #22c55e;
+        }
+
+        @keyframes pulse-success {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .success-animation {
+            animation: pulse-success 0.5s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel" data-type="module" data-presets="react">
+        import React, { useState, useEffect, useCallback, useMemo } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { RefreshCw, CheckCircle2, Trophy, BookOpen, Star } from 'lucide-react';
+        import confetti from 'canvas-confetti';
+
+        const GRID_SIZE = 10;
+        const WORDS_PER_GAME = 8;
+
+        const WORD_POOL = [
+            'GATTO', 'CANE', 'SOLE', 'MARE', 'LUNA', 'CASA', 'PANE', 'PIZZA', 
+            'ROSSO', 'BLU', 'VERDE', 'MELA', 'PERA', 'LIBRO', 'SCUOLA', 'FIORE',
+            'ALBERO', 'PRATO', 'CIELO', 'LATTE', 'PASTA', 'PESCE', 'RANA', 'TOPO',
+            'PORTA', 'MURO', 'TETTO', 'SEDIA', 'TAVOLO', 'LETTO', 'NONNO', 'NONNA',
+            'MADRE', 'PADRE', 'AMICO', 'GIOCO', 'PALLA', 'BICI', 'AUTO', 'TRENO',
+            'GIALLO', 'VIOLA', 'ROSA', 'NERO', 'BIANCO', 'ACQUA', 'FUOCO', 'VENTO',
+            'BAMBINO', 'BAMBINA', 'MANO', 'PIEDE', 'BOCCA', 'NASO', 'OCCHIO', 'ERBA'
+        ];
+
+        function App() {
+            const [grid, setGrid] = useState([]);
+            const [targetWords, setTargetWords] = useState([]);
+            const [selectedCells, setSelectedCells] = useState([]);
+            const [foundWords, setFoundWords] = useState([]);
+            const [gameOver, setGameOver] = useState(false);
+
+            const generateGame = useCallback(() => {
+                const newGrid = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(''));
+                const selectedWords = [...WORD_POOL]
+                    .sort(() => 0.5 - Math.random())
+                    .slice(0, WORDS_PER_GAME);
+                
+                const placedWords = [];
+
+                selectedWords.forEach(word => {
+                    let placed = false;
+                    let attempts = 0;
+                    
+                    while (!placed && attempts < 50) {
+                        const isVertical = Math.random() > 0.5;
+                        const row = Math.floor(Math.random() * (isVertical ? GRID_SIZE - word.length : GRID_SIZE));
+                        const col = Math.floor(Math.random() * (isVertical ? GRID_SIZE : GRID_SIZE - word.length));
+                        
+                        let canPlace = true;
+                        const positions = [];
+
+                        for (let i = 0; i < word.length; i++) {
+                            const r = isVertical ? row + i : row;
+                            const c = isVertical ? col : col + i;
+                            if (newGrid[r][c] !== '' && newGrid[r][c] !== word[i]) {
+                                canPlace = false;
+                                break;
+                            }
+                            positions.push({ r, c });
+                        }
+
+                        if (canPlace) {
+                            positions.forEach((pos, i) => {
+                                newGrid[pos.r][pos.c] = word[i];
+                            });
+                            placedWords.push({ word, positions });
+                            placed = true;
+                        }
+                        attempts++;
+                    }
+                });
+
+                // Fill empty cells
+                const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+                for (let r = 0; r < GRID_SIZE; r++) {
+                    for (let c = 0; c < GRID_SIZE; c++) {
+                        if (newGrid[r][c] === '') {
+                            newGrid[r][c] = letters.charAt(Math.floor(Math.random() * letters.length));
+                        }
+                    }
+                }
+
+                setGrid(newGrid);
+                setTargetWords(placedWords);
+                setFoundWords([]);
+                setSelectedCells([]);
+                setGameOver(false);
+            }, []);
+
+            useEffect(() => {
+                generateGame();
+            }, [generateGame]);
+
+            const handleCellClick = (r, c) => {
+                if (gameOver) return;
+
+                const isAlreadySelected = selectedCells.find(cell => cell.r === r && cell.c === c);
+                let newSelection;
+
+                if (isAlreadySelected) {
+                    newSelection = selectedCells.filter(cell => !(cell.r === r && cell.c === c));
+                } else {
+                    newSelection = [...selectedCells, { r, c }];
+                }
+
+                setSelectedCells(newSelection);
+
+                // Check if the current selection matches any target word
+                const selectedWordString = newSelection
+                    .map(pos => grid[pos.r][pos.c])
+                    .join('');
+                
+                // Also check reverse selection
+                const selectedWordStringRev = [...newSelection]
+                    .reverse()
+                    .map(pos => grid[pos.r][pos.c])
+                    .join('');
+
+                const match = targetWords.find(tw => 
+                    (tw.word === selectedWordString || tw.word === selectedWordStringRev) &&
+                    tw.positions.length === newSelection.length &&
+                    tw.positions.every(pos => newSelection.some(sel => sel.r === pos.r && sel.c === pos.c))
+                );
+
+                if (match && !foundWords.includes(match.word)) {
+                    const updatedFound = [...foundWords, match.word];
+                    setFoundWords(updatedFound);
+                    setSelectedCells([]);
+                    
+                    if (updatedFound.length === targetWords.length) {
+                        setGameOver(true);
+                        confetti({
+                            particleCount: 150,
+                            spread: 70,
+                            origin: { y: 0.6 }
+                        });
+                    }
+                }
+            };
+
+            const isCellFound = (r, c) => {
+                return targetWords.some(tw => 
+                    foundWords.includes(tw.word) && 
+                    tw.positions.some(p => p.r === r && p.c === c)
+                );
+            };
+
+            const isCellSelected = (r, c) => {
+                return selectedCells.some(cell => cell.r === r && cell.c === c);
+            };
+
+            return (
+                <div className="max-w-4xl mx-auto p-4 md:p-8">
+                    <header className="text-center mb-8">
+                        <div className="flex items-center justify-center gap-2 mb-2">
+                            <Star className="text-yellow-400 fill-yellow-400" />
+                            <h1 className="text-3xl md:text-4xl font-bold text-sky-800">Parole Intrecciate</h1>
+                            <Star className="text-yellow-400 fill-yellow-400" />
+                        </div>
+                        <p className="text-sky-600 font-semibold">Impara l'italiano giocando!</p>
+                    </header>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        {/* Word List */}
+                        <div className="md:col-span-1 bg-white p-6 rounded-2xl shadow-lg border-b-4 border-sky-200">
+                            <div className="flex items-center gap-2 mb-4 text-sky-700">
+                                <BookOpen size={24} />
+                                <h2 className="text-xl font-bold">Parole:</h2>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-1 gap-2">
+                                {targetWords.map((tw, idx) => (
+                                    <div 
+                                        key={idx}
+                                        className={`flex items-center gap-2 p-2 rounded-lg transition-all ${
+                                            foundWords.includes(tw.word) 
+                                            ? 'bg-green-100 text-green-700 line-through opacity-70' 
+                                            : 'bg-sky-50 text-sky-800'
+                                        }`}
+                                    >
+                                        {foundWords.includes(tw.word) ? <CheckCircle2 size={18} /> : <div className="w-[18px] h-[18px] rounded-full border-2 border-sky-300" />}
+                                        <span className="font-bold tracking-wider">{tw.word}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Game Grid */}
+                        <div className="md:col-span-2 flex flex-col items-center">
+                            <div className="bg-sky-200 p-2 rounded-xl shadow-inner mb-6 w-full max-w-[500px]">
+                                <div className="grid grid-cols-10 gap-1 md:gap-2">
+                                    {grid.map((row, rIdx) => 
+                                        row.map((cell, cIdx) => (
+                                            <div
+                                                key={`${rIdx}-${cIdx}`}
+                                                onClick={() => handleCellClick(rIdx, cIdx)}
+                                                className={`grid-cell text-sm md:text-lg ${
+                                                    isCellFound(rIdx, cIdx) 
+                                                    ? 'cell-found' 
+                                                    : isCellSelected(rIdx, cIdx) 
+                                                    ? 'cell-selected' 
+                                                    : 'cell-default'
+                                                }`}
+                                            >
+                                                {cell}
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="flex gap-4">
+                                <button 
+                                    onClick={generateGame}
+                                    className="flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white px-6 py-3 rounded-full font-bold shadow-lg transition-transform active:scale-95"
+                                >
+                                    <RefreshCw size={20} /> Nueva Partida
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Win Modal */}
+                    {gameOver && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-in fade-in">
+                            <div className="bg-white rounded-3xl p-8 text-center shadow-2xl max-w-sm w-full border-t-8 border-green-400">
+                                <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <Trophy size={48} className="text-yellow-500" />
+                                </div>
+                                <h2 className="text-3xl font-bold text-sky-900 mb-2">Bravissimo!</h2>
+                                <p className="text-sky-600 mb-6 font-medium">Hai trovato tutte le parole!</p>
+                                <button 
+                                    onClick={generateGame}
+                                    className="w-full bg-green-500 hover:bg-green-600 text-white px-6 py-4 rounded-2xl font-bold text-xl shadow-lg transition-all hover:-translate-y-1"
+                                >
+                                    Gioca di nuovo
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    <footer className="mt-12 text-center text-sky-400 text-sm font-medium">
+                        Hecho con ❤️ para aprender italiano
+                    </footer>
+                </div>
+            );
+        }
+
+        createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
+
